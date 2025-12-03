@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, Users, Package, AlertTriangle } from "lucide-react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
+import { apiFetch } from "@/api/client";
 
 interface DashboardStats {
   totalSalesToday: number;
@@ -19,43 +19,17 @@ const Dashboard = () => {
     totalCustomers: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const { data: shopData } = await supabase
-          .from("shops")
-          .select("id")
-          .single();
-
-        if (!shopData) return;
-
-        const today = new Date().toISOString().split("T")[0];
-
-        const [invoices, customers, products] = await Promise.all([
-          supabase
-            .from("invoices")
-            .select("final_amount, amount_due, created_at")
-            .gte("created_at", today),
-          supabase.from("customers").select("balance_due").eq("customer_type", "fixed"),
-          supabase
-            .from("products")
-            .select("current_stock, low_stock_threshold")
-        ]);
-
-        const totalSalesToday = invoices.data?.reduce((sum, inv) => sum + Number(inv.final_amount), 0) || 0;
-        const totalPendingDues = customers.data?.reduce((sum, cust) => sum + Number(cust.balance_due), 0) || 0;
-        const lowStockItems = products.data?.filter(p => Number(p.current_stock) <= Number(p.low_stock_threshold)).length || 0;
-        const totalCustomers = customers.data?.length || 0;
-
-        setStats({
-          totalSalesToday,
-          totalPendingDues,
-          lowStockItems,
-          totalCustomers,
-        });
+        setError(null);
+        const data = await apiFetch<DashboardStats>("/api/dashboard/stats");
+        setStats(data);
       } catch (error) {
         console.error("Error fetching stats:", error);
+        setError("Unable to load dashboard statistics.");
       } finally {
         setLoading(false);
       }
@@ -113,7 +87,9 @@ const Dashboard = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{loading ? "..." : stat.value}</div>
+                <div className="text-2xl font-bold">
+                  {loading ? "..." : error ? "--" : stat.value}
+                </div>
               </CardContent>
             </Card>
           ))}

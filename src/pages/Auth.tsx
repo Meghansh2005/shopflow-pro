@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Store } from "lucide-react";
 import { z } from "zod";
+import { apiFetch } from "@/api/client";
 
 const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -32,19 +32,10 @@ const Auth = () => {
   const [activeTab, setActiveTab] = useState("login");
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      navigate("/dashboard");
+    }
   }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -58,36 +49,38 @@ const Auth = () => {
       });
 
       setLoading(true);
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
+      const response = await apiFetch<any>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+        }),
       });
 
-      if (error) {
-        if (error.message.includes("Invalid login credentials")) {
-          toast({
-            title: "Login Failed",
-            description: "Invalid email or password. Please try again.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Login Failed",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
-      } else {
-        toast({
-          title: "Welcome Back!",
-          description: "You have successfully logged in.",
-        });
+      if (response?.token) {
+        localStorage.setItem("authToken", response.token);
       }
+      if (response?.user) {
+        localStorage.setItem("user", JSON.stringify(response.user));
+      }
+
+      toast({
+        title: "Welcome Back!",
+        description: "You have successfully logged in.",
+      });
+
+      navigate("/dashboard");
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast({
           title: "Validation Error",
           description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else if (error instanceof Error) {
+        toast({
+          title: "Login Failed",
+          description: error.message,
           variant: "destructive",
         });
       }
@@ -112,60 +105,44 @@ const Auth = () => {
       });
 
       setLoading(true);
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
+      const response = await apiFetch<any>("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          shopName: data.shopName,
+          phoneNumber: data.phoneNumber,
+          shopAddress: data.shopAddress,
+          ownerName: data.ownerName,
+          ownerContact: data.ownerContact,
+          description: (formData.get("description") as string) || "",
+        }),
       });
 
-      if (authError) {
-        if (authError.message.includes("already registered")) {
-          toast({
-            title: "Signup Failed",
-            description: "This email is already registered. Please login instead.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Signup Failed",
-            description: authError.message,
-            variant: "destructive",
-          });
-        }
-        return;
+      if (response?.token) {
+        localStorage.setItem("authToken", response.token);
+      }
+      if (response?.user) {
+        localStorage.setItem("user", JSON.stringify(response.user));
       }
 
-      if (authData.user) {
-        const { error: shopError } = await supabase.from("shops").insert({
-          user_id: authData.user.id,
-          shop_name: data.shopName,
-          phone_number: data.phoneNumber,
-          shop_address: data.shopAddress,
-          owner_name: data.ownerName,
-          owner_contact: data.ownerContact,
-          description: formData.get("description") as string || "",
-        });
+      toast({
+        title: "Welcome!",
+        description: "Your shop has been created successfully.",
+      });
 
-        if (shopError) {
-          toast({
-            title: "Shop Creation Failed",
-            description: shopError.message,
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Welcome!",
-            description: "Your shop has been created successfully.",
-          });
-        }
-      }
+      navigate("/dashboard");
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast({
           title: "Validation Error",
           description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else if (error instanceof Error) {
+        toast({
+          title: "Signup Failed",
+          description: error.message,
           variant: "destructive",
         });
       }

@@ -1,29 +1,37 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
 import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
+interface LocalUser {
+  id?: string;
+  email?: string;
+  name?: string;
+}
+
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<LocalUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const token = localStorage.getItem("authToken");
+    const storedUser = localStorage.getItem("user");
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    if (token && storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser) as LocalUser;
+        setUser(parsed);
+      } catch {
+        setUser(null);
+      }
+    } else {
+      setUser(null);
+    }
 
-    return () => subscription.unsubscribe();
+    setLoading(false);
   }, []);
 
   if (loading) {

@@ -1,7 +1,19 @@
-import { Home, Package, Users, Receipt, Church, History, LogOut, Store } from "lucide-react";
+import {
+  Home,
+  Package,
+  Users,
+  Receipt,
+  History,
+  LogOut,
+  Store,
+  Wallet,
+  BarChart3,
+  Wrench,
+  Settings,
+  TrendingUp,
+} from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sidebar,
@@ -16,13 +28,22 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/api/client";
 
-const menuItems = [
-  { title: "Dashboard", url: "/dashboard", icon: Home },
-  { title: "Inventory", url: "/inventory", icon: Package },
-  { title: "Customers", url: "/customers", icon: Users },
-  { title: "Billing", url: "/billing", icon: Receipt },
-  { title: "Temple Orders", url: "/temple-orders", icon: Church },
+const primaryMenu = [
+  { title: "Home", url: "/dashboard", icon: Home },
+  { title: "Parties", url: "/customers", icon: Users },
+  { title: "Items", url: "/inventory", icon: Package },
+  { title: "Sale", url: "/billing", icon: Receipt },
+  { title: "Purchase & Expense", url: "/purchases", icon: Receipt },
+];
+
+const secondaryMenu = [
+  { title: "Cash & Bank", url: "/cash-bank", icon: Wallet },
+  { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "Growth & Marketing", url: "/dashboard", icon: TrendingUp },
+  { title: "Utilities", url: "/utilities", icon: Wrench },
+  { title: "Settings", url: "/settings", icon: Settings },
   { title: "History", url: "/history", icon: History },
 ];
 
@@ -37,20 +58,24 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
 
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        title: "Logout Failed",
-        description: error.message,
-        variant: "destructive",
+    try {
+      await apiFetch<void>("/api/auth/logout", {
+        method: "POST",
       });
-    } else {
-      toast({
-        title: "Logged Out",
-        description: "You have been successfully logged out.",
-      });
-      navigate("/auth");
+    } catch (error) {
+      // Ignore backend logout errors, still clear client state
+      console.error("Logout error:", error);
     }
+
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("user");
+
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
+
+    navigate("/auth");
   };
 
   return (
@@ -71,12 +96,35 @@ export function AppSidebar() {
         </div>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel>Main</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {primaryMenu.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                    <NavLink
+                      to={item.url}
+                      end
+                      className="hover:bg-muted/50 transition-colors"
+                      activeClassName="bg-primary/10 text-primary font-medium"
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>More</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {secondaryMenu.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink
                       to={item.url}
                       end
@@ -95,6 +143,19 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        {!isCollapsed && (
+          <div className="mb-2 rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2 text-xs">
+            <div className="font-semibold text-amber-900 dark:text-amber-200">
+              Upgrade to Premium
+            </div>
+            <div className="text-amber-900/80 dark:text-amber-200/80">
+              Unlock advanced reports, backups &amp; priority support.
+            </div>
+            <Button size="sm" className="mt-2 h-7 w-full text-xs">
+              Get Premium
+            </Button>
+          </div>
+        )}
         <Button
           variant="ghost"
           className="w-full justify-start hover:bg-destructive/10 hover:text-destructive"
