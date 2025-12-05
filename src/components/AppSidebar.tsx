@@ -88,8 +88,8 @@ export function AppSidebar() {
             </div>
             {!isCollapsed && (
               <div>
-                <h2 className="text-lg font-bold text-foreground">Shop POS</h2>
-                <p className="text-xs text-muted-foreground">Management System</p>
+                <h2 className="text-lg font-bold text-foreground">ShopSathi</h2>
+                <p className="text-xs text-muted-foreground">Retail Companion</p>
               </div>
             )}
           </div>
@@ -143,19 +143,6 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
-        {!isCollapsed && (
-          <div className="mb-2 rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2 text-xs">
-            <div className="font-semibold text-amber-900 dark:text-amber-200">
-              Upgrade to Premium
-            </div>
-            <div className="text-amber-900/80 dark:text-amber-200/80">
-              Unlock advanced reports, backups &amp; priority support.
-            </div>
-            <Button size="sm" className="mt-2 h-7 w-full text-xs">
-              Get Premium
-            </Button>
-          </div>
-        )}
         <Button
           variant="ghost"
           className="w-full justify-start hover:bg-destructive/10 hover:text-destructive"

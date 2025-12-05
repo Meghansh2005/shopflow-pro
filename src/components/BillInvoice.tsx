@@ -21,7 +21,7 @@ interface BillInvoiceProps {
 const BillInvoice = ({
   items,
   total,
-  shopName = "Shop POS",
+  shopName = "ShopSathi",
   shopAddress = "Your shop address",
   customerName,
   phone = "",

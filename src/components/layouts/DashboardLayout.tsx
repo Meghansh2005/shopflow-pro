@@ -10,18 +10,30 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
+const SETTINGS_EVENT = "dashboard-settings-update";
+const DEFAULT_SUPPORT_PHONE = "+91-0000000000";
+
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const [businessName, setBusinessName] = useState("");
+  const [supportPhone, setSupportPhone] = useState(DEFAULT_SUPPORT_PHONE);
   const navigate = useNavigate();
 
+  const syncHeaderSettings = () => {
+    setBusinessName(localStorage.getItem("businessName") || "");
+    setSupportPhone(localStorage.getItem("supportPhone") || DEFAULT_SUPPORT_PHONE);
+  };
+
   useEffect(() => {
-    const stored = localStorage.getItem("businessName") || "";
-    setBusinessName(stored);
+    syncHeaderSettings();
+    const handler = () => syncHeaderSettings();
+    window.addEventListener(SETTINGS_EVENT, handler);
+    return () => window.removeEventListener(SETTINGS_EVENT, handler);
   }, []);
 
   const handleBusinessNameChange = (value: string) => {
     setBusinessName(value);
     localStorage.setItem("businessName", value);
+    window.dispatchEvent(new Event(SETTINGS_EVENT));
   };
 
   return (
@@ -32,14 +44,6 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           <header className="h-16 border-b border-border flex items-center justify-between px-4 bg-card gap-4">
             <div className="flex items-center gap-3">
               <SidebarTrigger />
-              <Button
-                variant="outline"
-                size="sm"
-                className="hidden md:inline-flex rounded-full px-4 text-xs"
-              >
-                Open Anything
-                <span className="ml-2 text-[10px] text-muted-foreground">Ctrl + K</span>
-              </Button>
             </div>
 
             <div className="flex-1 flex flex-col items-center gap-1 max-w-xl">
@@ -52,7 +56,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               <div className="hidden md:flex items-center gap-2 text-[11px] text-muted-foreground">
                 <PhoneCall className="h-3 w-3" />
                 <span>Customer Support:</span>
-                <span className="font-medium">+91-0000000000</span>
+                <span className="font-medium">{supportPhone}</span>
               </div>
             </div>
 

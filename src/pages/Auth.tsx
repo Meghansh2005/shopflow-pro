@@ -25,6 +25,8 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+const SETTINGS_EVENT = "dashboard-settings-update";
+
 const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -125,6 +127,13 @@ const Auth = () => {
       if (response?.user) {
         localStorage.setItem("user", JSON.stringify(response.user));
       }
+
+      // Seed initial business profile from signup details
+      localStorage.setItem("businessName", data.shopName);
+      localStorage.setItem("businessAddress", data.shopAddress);
+      localStorage.setItem("businessPhone", data.phoneNumber);
+      localStorage.setItem("supportPhone", data.phoneNumber);
+      window.dispatchEvent(new Event(SETTINGS_EVENT));
 
       toast({
         title: "Welcome!",

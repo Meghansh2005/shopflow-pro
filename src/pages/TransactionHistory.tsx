@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/api/client";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface Order {
   id: number;
@@ -12,17 +13,35 @@ interface Order {
   created_at: string;
 }
 
+interface OrderItem {
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  price: number;
+}
+
+interface OrderDetail extends Order {
+  items: OrderItem[];
+}
+
+const formatCurrency = (value: number | string) =>
+  `₹${Number(value ?? 0).toFixed(2)}`;
+
 const TransactionHistory = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
+  const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
         setError(null);
         const data = await apiFetch<Order[]>("/api/orders");
-        // Normalise numeric fields in case the backend returns strings
         const normalised = (data || []).map((order) => ({
           ...order,
           total_amount: Number(order.total_amount ?? 0),
@@ -39,6 +58,31 @@ const TransactionHistory = () => {
     };
     load();
   }, []);
+
+  const openDetail = async (orderId: number) => {
+    setActiveOrderId(orderId);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    try {
+      const detail = await apiFetch<OrderDetail>(`/api/orders/${orderId}`);
+      setOrderDetail({
+        ...detail,
+        total_amount: Number(detail.total_amount ?? 0),
+        discount: Number(detail.discount ?? 0),
+        final_amount: Number(detail.final_amount ?? 0),
+        items: (detail.items || []).map((item) => ({
+          ...item,
+          quantity: Number(item.quantity ?? 0),
+          price: Number(item.price ?? 0),
+        })),
+      });
+    } catch (err) {
+      console.error("Failed to load order detail", err);
+      setError("Unable to load bill details.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -73,9 +117,11 @@ const TransactionHistory = () => {
                   <span className="text-right">Final</span>
                 </div>
                 {orders.map((order) => (
-                  <div
+                  <button
                     key={order.id}
-                    className="grid grid-cols-[auto,2fr,auto,auto,auto] gap-2 px-3 py-2 items-center"
+                    type="button"
+                    onClick={() => openDetail(order.id)}
+                    className="grid w-full grid-cols-[auto,2fr,auto,auto,auto] gap-2 px-3 py-2 items-center hover:bg-muted/60 text-left"
                   >
                     <span className="text-xs text-muted-foreground">#{order.id}</span>
                     <div className="flex flex-col">
@@ -87,21 +133,96 @@ const TransactionHistory = () => {
                       </span>
                     </div>
                     <span className="text-right text-xs sm:text-sm">
-                      ₹{order.total_amount.toFixed(2)}
+                      {formatCurrency(order.total_amount)}
                     </span>
                     <span className="text-right text-xs sm:text-sm">
-                      -₹{order.discount.toFixed(2)}
+                      -{formatCurrency(order.discount)}
                     </span>
                     <span className="text-right text-xs sm:text-sm font-semibold">
-                      ₹{order.final_amount.toFixed(2)}
+                      {formatCurrency(order.final_amount)}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <Sheet
+        open={detailOpen}
+        onOpenChange={(open) => {
+          setDetailOpen(open);
+          if (!open) {
+            setActiveOrderId(null);
+            setOrderDetail(null);
+          }
+        }}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-3xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Bill Details</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3 text-sm">
+            {detailLoading || !orderDetail ? (
+              <p className="text-sm text-muted-foreground">
+                {detailLoading ? "Loading bill..." : "Select an invoice to view details."}
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold">
+                      {orderDetail.customer_name || "Cash / Walk-in"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(orderDetail.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div>Invoice #{orderDetail.id}</div>
+                  </div>
+                </div>
+
+                <div className="border rounded-md">
+                  <div className="grid grid-cols-[2fr,auto,auto] text-xs font-medium bg-muted/60 px-3 py-2">
+                    <span>Item</span>
+                    <span className="text-right">Qty</span>
+                    <span className="text-right">Amount</span>
+                  </div>
+                  {orderDetail.items.map((item) => (
+                    <div
+                      key={`${item.product_id}-${item.product_name}`}
+                      className="grid grid-cols-[2fr,auto,auto] text-xs px-3 py-1.5"
+                    >
+                      <span>{item.product_name}</span>
+                      <span className="text-right">{item.quantity}</span>
+                      <span className="text-right">
+                        {formatCurrency(item.price * item.quantity)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(orderDetail.total_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Discount</span>
+                    <span>-{formatCurrency(orderDetail.discount)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t pt-1">
+                    <span>Total</span>
+                    <span>{formatCurrency(orderDetail.final_amount)}</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </DashboardLayout>
   );
 };

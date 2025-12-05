@@ -14,7 +14,13 @@ interface Product {
   quantity: number;
   description?: string | null;
   image_url?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+  size?: string | null;
+  color?: string | null;
 }
+
+const SETTINGS_EVENT = "dashboard-settings-update";
 
 const Billing = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -24,6 +30,13 @@ const Billing = () => {
   const [customerName, setCustomerName] = useState("");
   const [discount, setDiscount] = useState<string>("0");
   const [saving, setSaving] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [shopDetails, setShopDetails] = useState({
+    name: localStorage.getItem("businessName") || "ShopSathi",
+    address: localStorage.getItem("businessAddress") || "",
+    phone: localStorage.getItem("supportPhone") || "",
+    gst: localStorage.getItem("businessGstin") || "",
+  });
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -37,6 +50,10 @@ const Billing = () => {
           quantity: Number(p.quantity ?? 0),
           description: p.description ?? null,
           image_url: p.image_url ?? null,
+          category: p.category ?? null,
+          subcategory: p.subcategory ?? null,
+          size: p.size ?? null,
+          color: p.color ?? null,
         }));
         setProducts(data);
       } catch (err) {
@@ -48,6 +65,19 @@ const Billing = () => {
     };
 
     loadProducts();
+
+    const syncDetails = () => {
+      setShopDetails({
+        name: localStorage.getItem("businessName") || "ShopSathi",
+        address: localStorage.getItem("businessAddress") || "",
+        phone: localStorage.getItem("supportPhone") || "",
+        gst: localStorage.getItem("businessGstin") || "",
+      });
+    };
+
+    syncDetails();
+    window.addEventListener(SETTINGS_EVENT, syncDetails);
+    return () => window.removeEventListener(SETTINGS_EVENT, syncDetails);
   }, []);
 
   const addToCart = (product: Product) => {
@@ -89,6 +119,12 @@ const Billing = () => {
     );
   };
 
+  const handlePresetQuantity = (id: number | string, qty: number) => {
+    setCartItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, quantity: qty } : item)),
+    );
+  };
+
   const clearCart = () => setCartItems([]);
 
   const subtotal = useMemo(
@@ -99,12 +135,12 @@ const Billing = () => {
   const discountNumber = Number(discount) || 0;
   const total = useMemo(() => Math.max(subtotal - discountNumber, 0), [subtotal, discountNumber]);
 
-  const handleSaveAndPrint = async () => {
+  const handleSaveBill = async () => {
     if (cartItems.length === 0 || saving) return;
     try {
       setSaving(true);
       setError(null);
-      const response = await apiFetch("/api/orders", {
+      await apiFetch("/api/orders", {
         method: "POST",
         body: JSON.stringify({
           customerName: customerName || null,
@@ -113,11 +149,10 @@ const Billing = () => {
         }),
       });
 
-      console.log("Order saved successfully:", response);
-      window.print();
       setCartItems([]);
       setDiscount("0");
       setCustomerName("");
+      setProductSearch("");
     } catch (err: any) {
       console.error("Failed to save order", err);
       const errorMessage = err?.message || "Unable to save bill. Please try again.";
@@ -127,160 +162,233 @@ const Billing = () => {
     }
   };
 
+  const handlePrintBill = () => {
+    if (cartItems.length === 0) return;
+    window.print();
+  };
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearch.trim()) return [];
+    const searchTokens = productSearch.toLowerCase().split("/").map((token) => token.trim()).filter(Boolean);
+    return products
+      .filter((product) => {
+        const haystack = [
+          product.name,
+          product.description,
+          product.category,
+          product.subcategory,
+          product.size,
+          product.color,
+        ]
+          .map((val) => (val ?? "").toLowerCase())
+          .join(" ");
+        return searchTokens.every((token) => haystack.includes(token));
+      })
+      .slice(0, 8);
+  }, [productSearch, products]);
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Billing & POS</h1>
-            <p className="text-muted-foreground">Create invoices and process sales</p>
+            <h1 className="text-3xl font-bold text-foreground">ShopSathi Billing</h1>
+            <p className="text-muted-foreground">Search inventory and build a neat invoice.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={clearCart} disabled={cartItems.length === 0}>
-              Clear Cart
+              Clear Bill
             </Button>
-            <Button onClick={handleSaveAndPrint} disabled={cartItems.length === 0 || saving}>
-              {saving ? "Saving..." : "Save & Print Bill"}
+            <Button onClick={handleSaveBill} disabled={cartItems.length === 0 || saving}>
+              {saving ? "Saving..." : "Save Bill"}
+            </Button>
+            <Button variant="secondary" onClick={handlePrintBill} disabled={cartItems.length === 0}>
+              Print Bill
             </Button>
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[2fr,1.5fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Products</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <p className="text-muted-foreground">Loading products...</p>
-              ) : error ? (
-                <p className="text-destructive text-sm">{error}</p>
-              ) : products.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  No products found. Add products in your backend to start billing.
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {products.map((product) => {
-                    const inCart = cartItems.find((c) => c.id === product.id);
-                    const remaining = product.quantity - (inCart?.quantity ?? 0);
-                    const isOutOfStock = remaining <= 0;
-
-                    return (
-                      <button
-                        key={product.id}
-                        type="button"
-                        onClick={() => !isOutOfStock && addToCart(product)}
-                        className="flex flex-col items-start rounded-lg border border-border p-3 text-left hover:border-primary hover:bg-muted/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                        disabled={isOutOfStock}
-                      >
-                        <span className="font-medium">{product.name}</span>
-                        {product.description && (
-                          <span className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                            {product.description}
-                          </span>
-                        )}
-                        <span className="mt-2 font-semibold text-primary">
-                          ₹{product.price.toFixed(2)}
-                        </span>
-                        <span className="mt-1 text-xs text-muted-foreground">
-                          {isOutOfStock ? "Out of stock" : `In stock: ${remaining}`}
-                        </span>
-                      </button>
-                    );
-                  })}
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Bill</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="grid gap-4 lg:grid-cols-[1.2fr,1fr]">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Search inventory</Label>
+                  <Input
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="Type product name or use shortcuts like polo/blue"
+                    disabled={loading || products.length === 0}
+                  />
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Current Bill</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Customer Name (optional)</Label>
-                <Input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Enter customer name"
-                />
+                <div className="border rounded-md divide-y max-h-72 overflow-y-auto text-sm">
+                  {filteredProducts.length === 0 ? (
+                    <p className="px-3 py-2 text-muted-foreground">No matching products.</p>
+                  ) : (
+                    filteredProducts.map((product) => {
+                      const inCart = cartItems.find((c) => c.id === product.id);
+                      const remaining = product.quantity - (inCart?.quantity ?? 0);
+                      const isOutOfStock = remaining <= 0;
+                      return (
+                        <button
+                          key={product.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-muted/60 disabled:opacity-50"
+                          onClick={() => !isOutOfStock && addToCart(product)}
+                          disabled={isOutOfStock}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">
+                              {product.name}
+                              {product.subcategory && ` · ${product.subcategory}`}
+                            </span>
+                            <span>₹{product.price.toFixed(2)}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground flex justify-between gap-2">
+                            <span>
+                              {[product.size, product.color].filter(Boolean).join(" / ") || "—"}
+                            </span>
+                            <span>{isOutOfStock ? "Out of stock" : `${remaining} in stock`}</span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
-              {cartItems.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  Add products from the list to start a bill.
-                </p>
-              ) : (
-                <div className="space-y-3">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Customer Name (optional)</Label>
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Enter customer name"
+                  />
+                </div>
+
+            {cartItems.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Add products from the list to start a bill.
+              </p>
+            ) : (
+              <div className="space-y-3">
                   <div className="border rounded-md divide-y text-sm">
-                    <div className="grid grid-cols-[2fr,auto,auto,auto] gap-2 px-3 py-2 font-medium bg-muted/60">
+                    <div className="grid grid-cols-[2fr,auto,auto,auto,auto] gap-2 px-3 py-2 font-medium bg-muted/60">
                       <span>Item</span>
                       <span className="text-right">Qty</span>
                       <span className="text-right">Price</span>
                       <span className="text-right">Total</span>
+                      <span className="text-right">Action</span>
                     </div>
-                    {cartItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="grid grid-cols-[2fr,auto,auto,auto] gap-2 items-center px-3 py-2"
-                      >
-                        <span className="truncate">{item.name}</span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={item.quantity}
-                          onChange={(e) => updateQuantity(item.id, Number(e.target.value) || 1)}
-                          className="w-14 rounded border px-1 py-0.5 text-right text-sm"
-                        />
-                        <span className="text-right text-xs sm:text-sm">
-                          ₹{item.price.toFixed(2)}
-                        </span>
-                        <span className="text-right font-medium text-xs sm:text-sm">
-                          ₹{(item.price * item.quantity).toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
+                    {cartItems.map((item) => {
+                      return (
+                        <div
+                          key={item.id}
+                          className="grid grid-cols-[2fr,auto,auto,auto,auto] gap-2 items-start px-3 py-2"
+                        >
+                          <div>
+                            <span className="truncate block">{item.name}</span>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => handlePresetQuantity(item.id, 1)}
+                              >
+                                1 Pc
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => handlePresetQuantity(item.id, 12)}
+                              >
+                                1 Doz
+                              </Button>
+                            </div>
+                          </div>
+                          <input
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => updateQuantity(item.id, Number(e.target.value) || 1)}
+                            className="w-16 rounded border px-1 py-0.5 text-right text-sm"
+                          />
+                          <span className="text-right text-xs sm:text-sm">
+                            ₹{item.price.toFixed(2)}
+                          </span>
+                          <span className="text-right font-medium text-xs sm:text-sm">
+                            ₹{(item.price * item.quantity).toFixed(2)}
+                          </span>
+                          <div className="text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-[11px] text-destructive"
+                              onClick={() => setCartItems((prev) => prev.filter((p) => p.id !== item.id))}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  <div className="space-y-1 pt-2 border-t text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>Subtotal</span>
-                      <span>₹{subtotal.toFixed(2)}</span>
+                <div className="space-y-1 pt-2 border-t text-sm">
+                  <div className="flex items-center justify-between">
+                    <span>Subtotal</span>
+                    <span>₹{subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span>Discount</span>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span>Discount</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Input
-                          className="w-24 h-8 text-right text-sm"
-                          type="number"
-                          min="0"
-                          value={discount}
-                          onChange={(e) => setDiscount(e.target.value)}
-                        />
-                        <span className="text-xs text-muted-foreground">₹</span>
-                      </div>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        className="w-24 h-8 text-right text-sm"
+                        type="number"
+                        min="0"
+                        value={discount}
+                        onChange={(e) => setDiscount(e.target.value)}
+                      />
+                      <span className="text-xs text-muted-foreground">₹</span>
                     </div>
-                    <div className="flex items-center justify-between pt-1 border-t font-semibold">
-                      <span>Total</span>
-                      <span className="text-lg">₹{total.toFixed(2)}</span>
-                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t font-semibold">
+                    <span>Total</span>
+                    <span className="text-lg">₹{total.toFixed(2)}</span>
                   </div>
                 </div>
-              )}
-
-              <div className="pt-2 border-t text-xs text-muted-foreground">
-                Tip: Use the <span className="font-medium">Save &amp; Print Bill</span> button above
-                to save the invoice, reduce stock, and generate a clean print.
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            )}
 
-        <BillInvoice items={cartItems} total={total} customerName={customerName} />
+            <div className="pt-2 border-t text-xs text-muted-foreground">
+              Tip: Use the <span className="font-semibold">Save Bill</span> button to post stock changes, then
+              <span className="font-semibold"> Print Bill</span> for a clean receipt.
+            </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <BillInvoice
+          items={cartItems}
+          total={total}
+          customerName={customerName}
+          shopName={shopDetails.name}
+          shopAddress={shopDetails.address}
+          phone={shopDetails.phone}
+          gstNumber={shopDetails.gst}
+        />
       </div>
     </DashboardLayout>
   );

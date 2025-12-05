@@ -34,6 +34,106 @@ db.connect((err) => {
         return;
     }
     console.log("✅ Connected to MySQL Database");
+
+    const createProductsTable = `
+        CREATE TABLE IF NOT EXISTS products (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            size VARCHAR(100),
+            color VARCHAR(100),
+            price DECIMAL(10,2) NOT NULL,
+            purchase_price DECIMAL(10,2) DEFAULT 0,
+            quantity INT NOT NULL DEFAULT 0,
+            category VARCHAR(255),
+            subcategory VARCHAR(255),
+            product_type VARCHAR(50) DEFAULT 'ready-made'
+        ) ENGINE=InnoDB;
+    `;
+
+    const createCustomersTable = `
+        CREATE TABLE IF NOT EXISTS customers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            phone VARCHAR(50),
+            address TEXT,
+            type VARCHAR(100),
+            dues DECIMAL(10,2) DEFAULT 0
+        ) ENGINE=InnoDB;
+    `;
+
+    const createOrdersTable = `
+        CREATE TABLE IF NOT EXISTS orders (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_name VARCHAR(255),
+            total_amount DECIMAL(10,2) NOT NULL,
+            discount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            final_amount DECIMAL(10,2) NOT NULL,
+            created_at DATETIME NOT NULL
+        ) ENGINE=InnoDB;
+    `;
+
+    const createOrderItemsTable = `
+        CREATE TABLE IF NOT EXISTS order_items (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            order_id INT NOT NULL,
+            product_id INT,
+            product_name VARCHAR(255) NOT NULL,
+            quantity INT NOT NULL,
+            price DECIMAL(10,2) NOT NULL,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB;
+    `;
+
+    const createPurchasesTable = `
+        CREATE TABLE IF NOT EXISTS purchases (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            supplier_name VARCHAR(255) NOT NULL,
+            company_name VARCHAR(255),
+            invoice_number VARCHAR(100),
+            amount DECIMAL(10,2) NOT NULL,
+            notes TEXT,
+            has_bill_image TINYINT(1) DEFAULT 0,
+            created_at DATETIME NOT NULL
+        ) ENGINE=InnoDB;
+    `;
+
+    const tableStatements = [
+        { name: "products", sql: createProductsTable },
+        { name: "customers", sql: createCustomersTable },
+        { name: "orders", sql: createOrdersTable },
+        { name: "order_items", sql: createOrderItemsTable },
+        { name: "purchases", sql: createPurchasesTable },
+    ];
+
+    tableStatements.forEach(({ name, sql }) => {
+        db.query(sql, (tableErr) => {
+            if (tableErr) {
+                console.error(`⚠️ Failed to ensure '${name}' table exists:`, tableErr);
+            }
+        });
+    });
+
+    const ensureColumn = (table, column, definition) => {
+        const checkSql = `SHOW COLUMNS FROM ${table} LIKE ?`;
+        db.query(checkSql, [column], (err, rows) => {
+            if (err) {
+                console.error(`⚠️ Failed to inspect column ${column} on ${table}:`, err);
+                return;
+            }
+            if (rows.length === 0) {
+                const alterSql = `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`;
+                db.query(alterSql, (alterErr) => {
+                    if (alterErr) {
+                        console.error(`⚠️ Failed to add column ${column} to ${table}:`, alterErr);
+                    }
+                });
+            }
+        });
+    };
+
+    ensureColumn("products", "purchase_price", "DECIMAL(10,2) DEFAULT 0");
+    ensureColumn("products", "product_type", "VARCHAR(50) DEFAULT 'ready-made'");
+    ensureColumn("products", "subcategory", "VARCHAR(255)");
 });
 
 // ----------------------------
@@ -123,19 +223,50 @@ app.get("/api/products", authMiddleware, (req, res) => {
 
 // CREATE PRODUCT
 app.post("/api/products", authMiddleware, (req, res) => {
-    const { name, size, color, price, quantity, category } = req.body;
+    const {
+        name,
+        size,
+        color,
+        price,
+        purchasePrice,
+        quantity,
+        category,
+        subcategory,
+        productType,
+    } = req.body;
 
     const sql = `
-        INSERT INTO products (name, size, color, price, quantity, category)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO products (name, size, color, price, purchase_price, quantity, category, subcategory, product_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
         sql,
-        [name, size, color, price, quantity, category],
+        [
+            name,
+            size,
+            color,
+            price,
+            purchasePrice ?? 0,
+            quantity,
+            category,
+            subcategory,
+            productType || "ready-made",
+        ],
         (err, result) => {
             if (err) return res.status(500).json(err);
-            res.json({ id: result.insertId, name, size, color, price, quantity, category });
+            res.json({
+                id: result.insertId,
+                name,
+                size,
+                color,
+                price,
+                purchase_price: purchasePrice ?? 0,
+                quantity,
+                category,
+                subcategory,
+                product_type: productType || "ready-made",
+            });
         }
     );
 });
@@ -143,20 +274,20 @@ app.post("/api/products", authMiddleware, (req, res) => {
 // UPDATE PRODUCT
 app.put("/api/products/:id", authMiddleware, (req, res) => {
     const { id } = req.params;
-    const { name, size, color, price, quantity, category } = req.body;
+    const { name, size, color, price, purchasePrice, quantity, category, subcategory, productType } = req.body;
 
     const sql = `
         UPDATE products
-        SET name=?, size=?, color=?, price=?, quantity=?, category=?
+        SET name=?, size=?, color=?, price=?, purchase_price=?, quantity=?, category=?, subcategory=?, product_type=?
         WHERE id=?
     `;
 
     db.query(
         sql,
-        [name, size, color, price, quantity, category, id],
+        [name, size, color, price, purchasePrice ?? 0, quantity, category, subcategory, productType || "ready-made", id],
         (err) => {
             if (err) return res.status(500).json(err);
-            res.json({ id, name, size, color, price, quantity, category });
+            res.json({ id, name, size, color, price, purchase_price: purchasePrice ?? 0, quantity, category, subcategory, product_type: productType || "ready-made" });
         }
     );
 });
@@ -263,6 +394,23 @@ app.post("/api/customers", authMiddleware, (req, res) => {
     );
 });
 
+// UPDATE CUSTOMER (useful for settling dues)
+app.put("/api/customers/:id", authMiddleware, (req, res) => {
+    const { id } = req.params;
+    const { name, phone, address, type, dues } = req.body;
+
+    const sql = `
+        UPDATE customers
+        SET name = ?, phone = ?, address = ?, type = ?, dues = ?
+        WHERE id = ?
+    `;
+
+    db.query(sql, [name, phone, address, type, dues, id], (err) => {
+        if (err) return res.status(500).json(err);
+        res.json({ id, name, phone, address, type, dues });
+    });
+});
+
 // DELETE CUSTOMER
 app.delete("/api/customers/:id", authMiddleware, (req, res) => {
     db.query("DELETE FROM customers WHERE id=?", [req.params.id], (err, result) => {
@@ -330,6 +478,98 @@ app.get("/api/orders", authMiddleware, (req, res) => {
     db.query(sql, (err, rows) => {
         if (err) return res.status(500).json(err);
         res.json(rows || []);
+    });
+});
+
+app.get("/api/orders/:id", authMiddleware, (req, res) => {
+    const { id } = req.params;
+    db.query("SELECT * FROM orders WHERE id = ?", [id], (err, orders) => {
+        if (err) return res.status(500).json(err);
+        if (orders.length === 0) return res.status(404).json({ message: "Order not found" });
+        const order = orders[0];
+        db.query(
+            "SELECT product_id, product_name, quantity, price FROM order_items WHERE order_id = ?",
+            [id],
+            (itemsErr, items) => {
+                if (itemsErr) return res.status(500).json(itemsErr);
+                res.json({
+                    ...order,
+                    items: items || [],
+                });
+            },
+        );
+    });
+});
+
+// --------------------------------------------------------
+// PURCHASES
+// --------------------------------------------------------
+
+app.post("/api/purchases", authMiddleware, (req, res) => {
+    const { supplierName, companyName, invoiceNumber, amount, date, notes, hasBillImage } = req.body;
+
+    if (!supplierName || amount === undefined) {
+        return res.status(400).json({ message: "Supplier name and amount are required" });
+    }
+
+    const createdAt = date ? new Date(date) : new Date();
+
+    const sql = `
+        INSERT INTO purchases (supplier_name, company_name, invoice_number, amount, notes, has_bill_image, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(
+        sql,
+        [supplierName, companyName || null, invoiceNumber || null, amount, notes || null, hasBillImage ? 1 : 0, createdAt],
+        (err, result) => {
+            if (err) return res.status(500).json(err);
+            res.json({
+                id: result.insertId,
+                supplierName,
+                companyName,
+                invoiceNumber,
+                amount,
+                notes,
+                hasBillImage: !!hasBillImage,
+                created_at: createdAt,
+            });
+        },
+    );
+});
+
+// --------------------------------------------------------
+// REPORTS
+// --------------------------------------------------------
+
+app.get("/api/reports/sales-summary", authMiddleware, (req, res) => {
+    const sql = `
+        SELECT 
+            oi.product_name,
+            SUM(oi.quantity) AS totalQty,
+            SUM(oi.quantity * oi.price) AS totalRevenue,
+            SUM(oi.quantity * IFNULL(p.purchase_price, 0)) AS totalCost
+        FROM order_items oi
+        LEFT JOIN products p ON p.id = oi.product_id
+        GROUP BY oi.product_name
+        ORDER BY totalQty DESC
+        LIMIT 10
+    `;
+
+    db.query(sql, (err, rows) => {
+        if (err) return res.status(500).json(err);
+        const mapped = (rows || []).map((row) => {
+            const revenue = Number(row.totalRevenue ?? 0);
+            const cost = Number(row.totalCost ?? 0);
+            return {
+                product_name: row.product_name,
+                totalQty: Number(row.totalQty ?? 0),
+                totalRevenue: revenue,
+                totalCost: cost,
+                profit: revenue - cost,
+            };
+        });
+        res.json(mapped);
     });
 });
 
