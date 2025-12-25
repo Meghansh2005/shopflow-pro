@@ -13,10 +13,34 @@ const bcrypt = require("bcryptjs");
 // APP SETUP
 // ----------------------------
 const app = express();
-app.use(cors());
+
+// CORS configuration for production
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://your-frontend-domain.vercel.app', 'https://shopflow-pro.vercel.app'] // Replace with your actual Vercel frontend URL
+    : ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
+
+// Health check endpoint
+app.get("/", (req, res) => {
+    res.json({ 
+        message: "ShopSathi API is running!", 
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
+app.get("/api/health", (req, res) => {
+    res.json({ status: "OK", timestamp: new Date().toISOString() });
+});
 
 // ----------------------------
 // DATABASE CONNECTION

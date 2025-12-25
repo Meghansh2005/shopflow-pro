@@ -1,13 +1,13 @@
 {
-  "name": "server",
+  "name": "shopflow-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "ShopSathi Backend API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": [],
+  "keywords": ["retail", "pos", "inventory"],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -16,7 +16,12 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.15.3",
+    "mysql2": "^3.15.3"
+  },
+  "devDependencies": {
     "nodemon": "^3.1.11"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
