@@ -26,6 +26,7 @@ const Customers = () => {
   const [address, setAddress] = useState("");
   const [type, setType] = useState("");
   const [dues, setDues] = useState("0");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -64,6 +65,17 @@ const Customers = () => {
   const wholesale = customers.filter(
     (c) => (c.type || "").toLowerCase().includes("wholesale")
   );
+
+  const filteredCustomers = useMemo(() => {
+    if (!searchQuery.trim()) return wholesale.length > 0 ? wholesale : customers;
+    
+    const query = searchQuery.toLowerCase();
+    return customers.filter(c => 
+      c.name.toLowerCase().includes(query) ||
+      (c.phone || "").toLowerCase().includes(query) ||
+      (c.type || "").toLowerCase().includes(query)
+    );
+  }, [customers, wholesale, searchQuery]);
 
   const handleDeleteCustomer = async (customer: Customer) => {
     if (!window.confirm(`Delete customer "${customer.name}"? This cannot be undone.`)) return;
@@ -183,8 +195,18 @@ const Customers = () => {
           </Card>
 
           <Card>
-          <CardHeader>
-            <CardTitle>Wholesale Customers &amp; Dues</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div>
+              <CardTitle>Wholesale Customers &amp; Dues</CardTitle>
+            </div>
+            <div className="w-64">
+              <Input
+                placeholder="Search customers..."
+                className="h-8"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             {loading ? (
@@ -210,7 +232,7 @@ const Customers = () => {
                 </div>
 
                 <div className="border rounded-md divide-y">
-                  {(wholesale.length > 0 ? wholesale : customers).map((c) => (
+                  {filteredCustomers.map((c) => (
                     <div
                       key={c.id}
                       className="grid grid-cols-[2fr,auto,auto] gap-2 px-3 py-2 items-center"

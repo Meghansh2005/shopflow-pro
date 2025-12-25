@@ -35,9 +35,21 @@ db.connect((err) => {
     }
     console.log("✅ Connected to MySQL Database");
 
+    // Create users table first
+    const createUsersTable = `
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            shop_name VARCHAR(255) DEFAULT 'My Shop',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB;
+    `;
+
     const createProductsTable = `
         CREATE TABLE IF NOT EXISTS products (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
             name VARCHAR(255) NOT NULL,
             size VARCHAR(100),
             color VARCHAR(100),
@@ -46,29 +58,34 @@ db.connect((err) => {
             quantity INT NOT NULL DEFAULT 0,
             category VARCHAR(255),
             subcategory VARCHAR(255),
-            product_type VARCHAR(50) DEFAULT 'ready-made'
+            product_type VARCHAR(50) DEFAULT 'ready-made',
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB;
     `;
 
     const createCustomersTable = `
         CREATE TABLE IF NOT EXISTS customers (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
             name VARCHAR(255) NOT NULL,
             phone VARCHAR(50),
             address TEXT,
             type VARCHAR(100),
-            dues DECIMAL(10,2) DEFAULT 0
+            dues DECIMAL(10,2) DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB;
     `;
 
     const createOrdersTable = `
         CREATE TABLE IF NOT EXISTS orders (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
             customer_name VARCHAR(255),
             total_amount DECIMAL(10,2) NOT NULL,
             discount DECIMAL(10,2) NOT NULL DEFAULT 0,
             final_amount DECIMAL(10,2) NOT NULL,
-            created_at DATETIME NOT NULL
+            created_at DATETIME NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB;
     `;
 
@@ -87,17 +104,20 @@ db.connect((err) => {
     const createPurchasesTable = `
         CREATE TABLE IF NOT EXISTS purchases (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
             supplier_name VARCHAR(255) NOT NULL,
             company_name VARCHAR(255),
             invoice_number VARCHAR(100),
             amount DECIMAL(10,2) NOT NULL,
             notes TEXT,
             has_bill_image TINYINT(1) DEFAULT 0,
-            created_at DATETIME NOT NULL
+            created_at DATETIME NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB;
     `;
 
     const tableStatements = [
+        { name: "users", sql: createUsersTable },
         { name: "products", sql: createProductsTable },
         { name: "customers", sql: createCustomersTable },
         { name: "orders", sql: createOrdersTable },
@@ -134,6 +154,10 @@ db.connect((err) => {
     ensureColumn("products", "purchase_price", "DECIMAL(10,2) DEFAULT 0");
     ensureColumn("products", "product_type", "VARCHAR(50) DEFAULT 'ready-made'");
     ensureColumn("products", "subcategory", "VARCHAR(255)");
+    ensureColumn("products", "user_id", "INT");
+    ensureColumn("customers", "user_id", "INT");
+    ensureColumn("orders", "user_id", "INT");
+    ensureColumn("purchases", "user_id", "INT");
 });
 
 // ----------------------------
@@ -209,13 +233,24 @@ app.post("/api/auth/login", (req, res) => {
     });
 });
 
+// LOGOUT
+app.post("/api/auth/logout", (req, res) => {
+    // For JWT tokens, logout is handled client-side by removing the token
+    // This endpoint exists for consistency and future token blacklisting if needed
+    res.json({ message: "Logged out successfully" });
+});
+
 // --------------------------------------------------------
 // PRODUCTS CRUD
 // --------------------------------------------------------
 
 // GET ALL PRODUCTS
 app.get("/api/products", authMiddleware, (req, res) => {
-    db.query("SELECT * FROM products", (err, data) => {
+    const userId = req.user?.id;
+    const sql = userId ? "SELECT * FROM products WHERE user_id = ?" : "SELECT * FROM products WHERE user_id IS NULL";
+    const params = userId ? [userId] : [];
+    
+    db.query(sql, params, (err, data) => {
         if (err) return res.status(500).json(err);
         res.json(data);
     });
@@ -235,14 +270,17 @@ app.post("/api/products", authMiddleware, (req, res) => {
         productType,
     } = req.body;
 
+    const userId = req.user?.id || null;
+
     const sql = `
-        INSERT INTO products (name, size, color, price, purchase_price, quantity, category, subcategory, product_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (user_id, name, size, color, price, purchase_price, quantity, category, subcategory, product_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
         sql,
         [
+            userId,
             name,
             size,
             color,
@@ -257,6 +295,7 @@ app.post("/api/products", authMiddleware, (req, res) => {
             if (err) return res.status(500).json(err);
             res.json({
                 id: result.insertId,
+                user_id: userId,
                 name,
                 size,
                 color,
@@ -275,16 +314,17 @@ app.post("/api/products", authMiddleware, (req, res) => {
 app.put("/api/products/:id", authMiddleware, (req, res) => {
     const { id } = req.params;
     const { name, size, color, price, purchasePrice, quantity, category, subcategory, productType } = req.body;
+    const userId = req.user?.id;
 
     const sql = `
         UPDATE products
         SET name=?, size=?, color=?, price=?, purchase_price=?, quantity=?, category=?, subcategory=?, product_type=?
-        WHERE id=?
+        WHERE id=? AND (user_id = ? OR (user_id IS NULL AND ? IS NULL))
     `;
 
     db.query(
         sql,
-        [name, size, color, price, purchasePrice ?? 0, quantity, category, subcategory, productType || "ready-made", id],
+        [name, size, color, price, purchasePrice ?? 0, quantity, category, subcategory, productType || "ready-made", id, userId, userId],
         (err) => {
             if (err) return res.status(500).json(err);
             res.json({ id, name, size, color, price, purchase_price: purchasePrice ?? 0, quantity, category, subcategory, product_type: productType || "ready-made" });
@@ -294,7 +334,10 @@ app.put("/api/products/:id", authMiddleware, (req, res) => {
 
 // DELETE PRODUCT
 app.delete("/api/products/:id", authMiddleware, (req, res) => {
-    db.query("DELETE FROM products WHERE id=?", [req.params.id], (err, result) => {
+    const userId = req.user?.id;
+    const sql = "DELETE FROM products WHERE id=? AND (user_id = ? OR (user_id IS NULL AND ? IS NULL))";
+    
+    db.query(sql, [req.params.id, userId, userId], (err, result) => {
         if (err) return res.status(500).json(err);
         res.json({ success: true });
     });
@@ -306,6 +349,7 @@ app.delete("/api/products/:id", authMiddleware, (req, res) => {
 
 app.post("/api/orders", authMiddleware, (req, res) => {
     const { customerName, discount = 0, items } = req.body;
+    const userId = req.user?.id || null;
 
     if (!items || items.length === 0)
         return res.status(400).json({ message: "Items required" });
@@ -317,13 +361,13 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         const finalAmount = total - discount;
 
         const orderSql = `
-            INSERT INTO orders (customer_name, total_amount, discount, final_amount, created_at)
-            VALUES (?, ?, ?, ?, NOW())
+            INSERT INTO orders (user_id, customer_name, total_amount, discount, final_amount, created_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
         `;
 
         db.query(
             orderSql,
-            [customerName, total, discount, finalAmount],
+            [userId, customerName, total, discount, finalAmount],
             (err, orderResult) => {
                 if (err) return db.rollback(() => res.status(500).json(err));
 
@@ -345,14 +389,15 @@ app.post("/api/orders", authMiddleware, (req, res) => {
                 db.query(itemsSql, [values], (err) => {
                     if (err) return db.rollback(() => res.status(500).json(err));
 
-                    // STOCK UPDATE
+                    // STOCK UPDATE - only update products belonging to the same user
                     const stockPromises = items.map((i) => {
                         return new Promise((resolve, reject) => {
-                            db.query(
-                                "UPDATE products SET quantity = quantity - ? WHERE id = ?",
-                                [i.quantity, i.id],
-                                (err) => err ? reject(err) : resolve()
-                            );
+                            const stockSql = userId 
+                                ? "UPDATE products SET quantity = quantity - ? WHERE id = ? AND user_id = ?"
+                                : "UPDATE products SET quantity = quantity - ? WHERE id = ? AND user_id IS NULL";
+                            const stockParams = userId ? [i.quantity, i.id, userId] : [i.quantity, i.id];
+                            
+                            db.query(stockSql, stockParams, (err) => err ? reject(err) : resolve());
                         });
                     });
 
@@ -375,7 +420,11 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 // --------------------------------------------------------
 
 app.get("/api/customers", authMiddleware, (req, res) => {
-    db.query("SELECT * FROM customers ORDER BY name ASC", (err, data) => {
+    const userId = req.user?.id;
+    const sql = userId ? "SELECT * FROM customers WHERE user_id = ? ORDER BY name ASC" : "SELECT * FROM customers WHERE user_id IS NULL ORDER BY name ASC";
+    const params = userId ? [userId] : [];
+    
+    db.query(sql, params, (err, data) => {
         if (err) return res.status(500).json(err);
         res.json(data);
     });
@@ -383,13 +432,14 @@ app.get("/api/customers", authMiddleware, (req, res) => {
 
 app.post("/api/customers", authMiddleware, (req, res) => {
     const { name, phone, address, type, dues } = req.body;
+    const userId = req.user?.id || null;
 
     db.query(
-        "INSERT INTO customers (name, phone, address, type, dues) VALUES (?,?,?,?,?)",
-        [name, phone, address, type, dues],
+        "INSERT INTO customers (user_id, name, phone, address, type, dues) VALUES (?,?,?,?,?,?)",
+        [userId, name, phone, address, type, dues],
         (err, result) => {
             if (err) return res.status(500).json(err);
-            res.json({ id: result.insertId, name, phone, address, type, dues });
+            res.json({ id: result.insertId, user_id: userId, name, phone, address, type, dues });
         }
     );
 });
@@ -427,30 +477,35 @@ app.delete("/api/customers/:id", authMiddleware, (req, res) => {
 // --------------------------------------------------------
 
 app.get("/api/dashboard/stats", authMiddleware, (req, res) => {
+    const userId = req.user?.id;
+    
     // For now, return simple aggregated stats so the dashboard works.
     // You can replace this with real SQL aggregation later.
+    const userFilter = userId ? "WHERE user_id = ?" : "WHERE user_id IS NULL";
+    const userParam = userId ? [userId] : [];
+    
     const salesTodaySql = `
         SELECT IFNULL(SUM(final_amount), 0) AS totalSalesToday
         FROM orders
-        WHERE DATE(created_at) = CURDATE()
+        ${userFilter} AND DATE(created_at) = CURDATE()
     `;
     const pendingDuesSql = `
-        SELECT IFNULL(SUM(dues), 0) AS totalPendingDues FROM customers
+        SELECT IFNULL(SUM(dues), 0) AS totalPendingDues FROM customers ${userFilter}
     `;
     const lowStockSql = `
-        SELECT COUNT(*) AS lowStockItems FROM products WHERE quantity <= 5
+        SELECT COUNT(*) AS lowStockItems FROM products ${userFilter} AND quantity <= 5
     `;
     const customersSql = `
-        SELECT COUNT(*) AS totalCustomers FROM customers
+        SELECT COUNT(*) AS totalCustomers FROM customers ${userFilter}
     `;
 
-    db.query(salesTodaySql, (err, salesRows) => {
+    db.query(salesTodaySql, userParam, (err, salesRows) => {
         if (err) return res.status(500).json(err);
-        db.query(pendingDuesSql, (err, duesRows) => {
+        db.query(pendingDuesSql, userParam, (err, duesRows) => {
             if (err) return res.status(500).json(err);
-            db.query(lowStockSql, (err, lowRows) => {
+            db.query(lowStockSql, userParam, (err, lowRows) => {
                 if (err) return res.status(500).json(err);
-                db.query(customersSql, (err, custRows) => {
+                db.query(customersSql, userParam, (err, custRows) => {
                     if (err) return res.status(500).json(err);
 
                     res.json({
@@ -470,12 +525,17 @@ app.get("/api/dashboard/stats", authMiddleware, (req, res) => {
 // --------------------------------------------------------
 
 app.get("/api/orders", authMiddleware, (req, res) => {
+    const userId = req.user?.id;
+    const userFilter = userId ? "WHERE user_id = ?" : "WHERE user_id IS NULL";
+    const userParam = userId ? [userId] : [];
+    
     const sql = `
         SELECT id, customer_name, total_amount, discount, final_amount, created_at
         FROM orders
+        ${userFilter}
         ORDER BY created_at DESC
     `;
-    db.query(sql, (err, rows) => {
+    db.query(sql, userParam, (err, rows) => {
         if (err) return res.status(500).json(err);
         res.json(rows || []);
     });
@@ -507,6 +567,7 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
 
 app.post("/api/purchases", authMiddleware, (req, res) => {
     const { supplierName, companyName, invoiceNumber, amount, date, notes, hasBillImage } = req.body;
+    const userId = req.user?.id || null;
 
     if (!supplierName || amount === undefined) {
         return res.status(400).json({ message: "Supplier name and amount are required" });
@@ -515,17 +576,18 @@ app.post("/api/purchases", authMiddleware, (req, res) => {
     const createdAt = date ? new Date(date) : new Date();
 
     const sql = `
-        INSERT INTO purchases (supplier_name, company_name, invoice_number, amount, notes, has_bill_image, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO purchases (user_id, supplier_name, company_name, invoice_number, amount, notes, has_bill_image, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
         sql,
-        [supplierName, companyName || null, invoiceNumber || null, amount, notes || null, hasBillImage ? 1 : 0, createdAt],
+        [userId, supplierName, companyName || null, invoiceNumber || null, amount, notes || null, hasBillImage ? 1 : 0, createdAt],
         (err, result) => {
             if (err) return res.status(500).json(err);
             res.json({
                 id: result.insertId,
+                user_id: userId,
                 supplierName,
                 companyName,
                 invoiceNumber,
@@ -543,6 +605,10 @@ app.post("/api/purchases", authMiddleware, (req, res) => {
 // --------------------------------------------------------
 
 app.get("/api/reports/sales-summary", authMiddleware, (req, res) => {
+    const userId = req.user?.id;
+    const userJoin = userId ? "LEFT JOIN products p ON p.id = oi.product_id AND p.user_id = ?" : "LEFT JOIN products p ON p.id = oi.product_id AND p.user_id IS NULL";
+    const orderFilter = userId ? "LEFT JOIN orders o ON o.id = oi.order_id WHERE o.user_id = ?" : "LEFT JOIN orders o ON o.id = oi.order_id WHERE o.user_id IS NULL";
+    
     const sql = `
         SELECT 
             oi.product_name,
@@ -550,13 +616,16 @@ app.get("/api/reports/sales-summary", authMiddleware, (req, res) => {
             SUM(oi.quantity * oi.price) AS totalRevenue,
             SUM(oi.quantity * IFNULL(p.purchase_price, 0)) AS totalCost
         FROM order_items oi
-        LEFT JOIN products p ON p.id = oi.product_id
+        ${orderFilter}
+        ${userJoin}
         GROUP BY oi.product_name
         ORDER BY totalQty DESC
         LIMIT 10
     `;
 
-    db.query(sql, (err, rows) => {
+    const params = userId ? [userId, userId] : [];
+    
+    db.query(sql, params, (err, rows) => {
         if (err) return res.status(500).json(err);
         const mapped = (rows || []).map((row) => {
             const revenue = Number(row.totalRevenue ?? 0);
