@@ -630,8 +630,6 @@ app.post("/api/purchases", authMiddleware, (req, res) => {
 
 app.get("/api/reports/sales-summary", authMiddleware, (req, res) => {
     const userId = req.user?.id;
-    const userJoin = userId ? "LEFT JOIN products p ON p.id = oi.product_id AND p.user_id = ?" : "LEFT JOIN products p ON p.id = oi.product_id AND p.user_id IS NULL";
-    const orderFilter = userId ? "LEFT JOIN orders o ON o.id = oi.order_id WHERE o.user_id = ?" : "LEFT JOIN orders o ON o.id = oi.order_id WHERE o.user_id IS NULL";
     
     const sql = `
         SELECT 
@@ -640,17 +638,21 @@ app.get("/api/reports/sales-summary", authMiddleware, (req, res) => {
             SUM(oi.quantity * oi.price) AS totalRevenue,
             SUM(oi.quantity * IFNULL(p.purchase_price, 0)) AS totalCost
         FROM order_items oi
-        ${orderFilter}
-        ${userJoin}
+        INNER JOIN orders o ON o.id = oi.order_id
+        LEFT JOIN products p ON p.id = oi.product_id
+        WHERE ${userId ? 'o.user_id = ?' : '(o.user_id IS NULL OR o.user_id = 0)'}
         GROUP BY oi.product_name
         ORDER BY totalQty DESC
         LIMIT 10
     `;
 
-    const params = userId ? [userId, userId] : [];
+    const params = userId ? [userId] : [];
     
     db.query(sql, params, (err, rows) => {
-        if (err) return res.status(500).json(err);
+        if (err) {
+            console.error("Sales summary query error:", err);
+            return res.status(500).json(err);
+        }
         const mapped = (rows || []).map((row) => {
             const revenue = Number(row.totalRevenue ?? 0);
             const cost = Number(row.totalCost ?? 0);

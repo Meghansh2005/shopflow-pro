@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/api/client";
+import { Package, Search, Plus, Edit, Trash2, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
 
 interface Product {
   id: number;
@@ -129,10 +131,21 @@ const Inventory = () => {
         subcategory,
         items: data.items,
         totalQty: data.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+        totalValue: data.items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0)), 0),
         meta: data.items[0],
       })),
     }));
   }, [products, stockSearch]);
+
+  const inventoryStats = useMemo(() => {
+    const totalProducts = products.length;
+    const totalValue = products.reduce((sum, p) => sum + (p.quantity * p.price), 0);
+    const lowStockItems = products.filter(p => p.quantity <= 5).length;
+    const outOfStockItems = products.filter(p => p.quantity === 0).length;
+    
+    return { totalProducts, totalValue, lowStockItems, outOfStockItems };
+  }, [products]);
+
   const startEdit = (product: Product) => {
     setEditingProduct(product);
     setEditValues({
@@ -168,7 +181,6 @@ const Inventory = () => {
     });
     setEditingProduct(null);
   };
-
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,178 +264,264 @@ const Inventory = () => {
     }
   };
 
+  const getStockStatus = (quantity: number) => {
+    if (quantity === 0) return { status: "out", color: "destructive", icon: AlertTriangle };
+    if (quantity <= 5) return { status: "low", color: "warning", icon: TrendingDown };
+    return { status: "good", color: "success", icon: TrendingUp };
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Inventory Management</h1>
-          <p className="text-muted-foreground">
-            Track ready-made purchases, manufactured SKUs, and quickly search stock by size or color.
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+              <Package className="h-8 w-8 text-primary" />
+              Inventory Management
+            </h1>
+            <p className="text-muted-foreground">
+              Manage your products, track stock levels, and organize inventory efficiently.
+            </p>
+          </div>
+        </div>
+
+        {/* Inventory Stats */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Products</p>
+                  <p className="text-2xl font-bold">{inventoryStats.totalProducts}</p>
+                </div>
+                <Package className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Value</p>
+                  <p className="text-2xl font-bold">₹{inventoryStats.totalValue.toFixed(0)}</p>
+                </div>
+                <TrendingUp className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Low Stock</p>
+                  <p className="text-2xl font-bold text-orange-600">{inventoryStats.lowStockItems}</p>
+                </div>
+                <TrendingDown className="h-8 w-8 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Out of Stock</p>
+                  <p className="text-2xl font-bold text-red-600">{inventoryStats.outOfStockItems}</p>
+                </div>
+                <AlertTriangle className="h-8 w-8 text-red-500" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <Tabs defaultValue="items" className="space-y-6">
-          <TabsList className="w-full md:w-auto">
-            <TabsTrigger value="items" className="flex-1">
-              Items
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="items" className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Add Items
             </TabsTrigger>
-            <TabsTrigger value="stock" className="flex-1">
-              Stock Management
+            <TabsTrigger value="stock" className="flex items-center gap-2">
+              <Search className="h-4 w-4" />
+              Manage Stock
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="items">
-            <div className="grid gap-6 lg:grid-cols-[1.2fr,2fr]">
-              <Card>
+            <div className="grid gap-6 lg:grid-cols-[1fr,1.5fr]">
+              <Card className="h-fit">
                 <CardHeader>
-                  <CardTitle>Add / Update Item</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <Plus className="h-5 w-5" />
+                    Add New Item
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleAddProduct} className="space-y-4 text-sm">
-                <div className="space-y-1.5">
-                  <Label>Item Name</Label>
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Shirt"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Product Type</Label>
-                    <select
-                      value={productType}
-                      onChange={(e) => setProductType(e.target.value as "ready-made" | "manufactured")}
-                      className="border rounded-md h-9 px-3 bg-background"
-                    >
-                      <option value="ready-made">Ready-made (buy & sell)</option>
-                      <option value="manufactured">Manufactured</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Size</Label>
-                    <Input
-                      value={size}
-                      onChange={(e) => setSize(e.target.value)}
-                      placeholder="e.g. Medium"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Color</Label>
-                    <Input
-                      value={color}
-                      onChange={(e) => setColor(e.target.value)}
-                      placeholder="e.g. Blue"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Category</Label>
-                    <Input
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      placeholder="e.g. Shirts"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Subcategory</Label>
-                    <Input
-                      value={subcategory}
-                      onChange={(e) => setSubcategory(e.target.value)}
-                      placeholder="e.g. Polo"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Selling Price (₹)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Buying Price (₹)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={purchasePrice}
-                      onChange={(e) => setPurchasePrice(e.target.value)}
-                      disabled={productType === "manufactured"}
-                      required={productType === "ready-made"}
-                      placeholder={productType === "manufactured" ? "Not required" : "Cost per unit"}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Quantity in Stock</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
+                  <form onSubmit={handleAddProduct} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Item Name *</Label>
+                      <Input
+                        id="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g. Cotton T-Shirt"
+                        required
+                      />
+                    </div>
 
-                <Button type="submit" className="w-full mt-2">
-                  Save Item
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="productType">Product Type *</Label>
+                        <select
+                          id="productType"
+                          value={productType}
+                          onChange={(e) => setProductType(e.target.value as "ready-made" | "manufactured")}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="ready-made">Ready-made (buy & sell)</option>
+                          <option value="manufactured">Manufactured</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="category">Category</Label>
+                        <Input
+                          id="category"
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          placeholder="e.g. Clothing"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="subcategory">Subcategory</Label>
+                        <Input
+                          id="subcategory"
+                          value={subcategory}
+                          onChange={(e) => setSubcategory(e.target.value)}
+                          placeholder="e.g. T-Shirts"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="size">Size</Label>
+                        <Input
+                          id="size"
+                          value={size}
+                          onChange={(e) => setSize(e.target.value)}
+                          placeholder="e.g. Medium, XL"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="color">Color</Label>
+                      <Input
+                        id="color"
+                        value={color}
+                        onChange={(e) => setColor(e.target.value)}
+                        placeholder="e.g. Blue, Red"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="purchasePrice">
+                          Buying Price (₹) {productType === "ready-made" && "*"}
+                        </Label>
+                        <Input
+                          id="purchasePrice"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={purchasePrice}
+                          onChange={(e) => setPurchasePrice(e.target.value)}
+                          disabled={productType === "manufactured"}
+                          required={productType === "ready-made"}
+                          placeholder={productType === "manufactured" ? "Not required" : "Cost per unit"}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="price">Selling Price (₹) *</Label>
+                        <Input
+                          id="price"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={price}
+                          onChange={(e) => setPrice(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="quantity">Quantity in Stock *</Label>
+                      <Input
+                        id="quantity"
+                        type="number"
+                        min="0"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    {error && (
+                      <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+                        {error}
+                      </div>
+                    )}
+
+                    <Button type="submit" className="w-full">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Item to Inventory
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
 
               <Card>
-                <CardHeader className="space-y-2">
-                  <CardTitle>Quick Stock Glimpse</CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Use Stock Management tab to edit the complete inventory table.
+                <CardHeader>
+                  <CardTitle>Recent Items</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Latest products added to your inventory
                   </p>
-                  <Input
-                    value={stockSearch}
-                    onChange={(e) => setStockSearch(e.target.value)}
-                    placeholder="Search like shirt/medium/blue"
-                    className="h-9"
-                  />
                 </CardHeader>
-                <CardContent className="space-y-4 text-sm">
+                <CardContent>
                   {loading ? (
                     <p className="text-muted-foreground">Loading products...</p>
-                  ) : error ? (
-                    <p className="text-destructive">{error}</p>
-                  ) : categorizedStock.length === 0 ? (
-                    <p className="text-muted-foreground">
-                      {products.length === 0
-                        ? "No items yet. Use the form to add your first product."
-                        : "No items match your search."}
-                    </p>
+                  ) : products.length === 0 ? (
+                    <p className="text-muted-foreground">No items yet. Add your first product using the form.</p>
                   ) : (
-                    categorizedStock.map((category) => (
-                      <div key={category.category} className="space-y-2">
-                        <div className="font-semibold text-xs uppercase text-muted-foreground">
-                          {category.category}
-                        </div>
-                        {category.subcategories.map((sub) => (
-                          <div key={sub.subcategory} className="border rounded-md">
-                            <div className="px-3 py-2 flex justify-between text-xs">
-                              <span>
-                                {sub.meta?.name} · {sub.subcategory}
-                              </span>
-                              <span>Total Qty: {sub.totalQty}</span>
+                    <div className="space-y-3">
+                      {products.slice(-5).reverse().map((product) => {
+                        const stockInfo = getStockStatus(product.quantity);
+                        const StockIcon = stockInfo.icon;
+                        return (
+                          <div key={product.id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium">{product.name}</h4>
+                                <Badge variant={product.product_type === "ready-made" ? "default" : "secondary"}>
+                                  {product.product_type}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {[product.category, product.subcategory, product.size, product.color]
+                                  .filter(Boolean)
+                                  .join(" • ")}
+                              </p>
+                              <div className="flex items-center gap-4 mt-1">
+                                <span className="text-sm">₹{product.price}</span>
+                                <div className="flex items-center gap-1">
+                                  <StockIcon className="h-3 w-3" />
+                                  <span className="text-sm">{product.quantity} in stock</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    ))
+                        );
+                      })}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -432,16 +530,24 @@ const Inventory = () => {
 
           <TabsContent value="stock">
             <Card>
-              <CardHeader className="space-y-2">
-                <CardTitle>Stock Management</CardTitle>
-                <Input
-                  value={stockSearch}
-                  onChange={(e) => setStockSearch(e.target.value)}
-                  placeholder="Search like shirt/medium/blue"
-                  className="h-9"
-                />
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Search className="h-5 w-5" />
+                    Stock Management
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={stockSearch}
+                      onChange={(e) => setStockSearch(e.target.value)}
+                      placeholder="Search products..."
+                      className="w-64"
+                    />
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-6 text-sm">
+              <CardContent>
                 {loading ? (
                   <p className="text-muted-foreground">Loading products...</p>
                 ) : error ? (
@@ -449,100 +555,83 @@ const Inventory = () => {
                 ) : categorizedStock.length === 0 ? (
                   <p className="text-muted-foreground">
                     {products.length === 0
-                      ? "No items yet. Use the Items tab to add your first product."
+                      ? "No items yet. Use the Add Items tab to add your first product."
                       : "No items match your search."}
                   </p>
                 ) : (
-                  categorizedStock.map((category) => (
-                    <div key={category.category} className="space-y-4">
-                      <div className="font-semibold text-sm uppercase text-muted-foreground">
-                        {category.category}
-                      </div>
-                      {category.subcategories.map((sub) => (
-                        <div key={sub.subcategory} className="border rounded-md">
-                          <div className="px-3 py-2 border-b bg-muted/30 flex flex-col gap-1">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="font-semibold">
-                                  {sub.meta?.name} · {sub.subcategory}
-                                </div>
-                                <div className="text-[11px] text-muted-foreground">
-                                  Size: {sub.meta?.size || "Any"} · Color: {sub.meta?.color || "Any"}
-                                </div>
-                              </div>
-                              <div className="text-[11px] text-muted-foreground text-right">
-                                <div>Type: {sub.meta?.product_type || "ready-made"}</div>
-                                <div>
-                                  Buying ₹{Number(sub.meta?.purchase_price ?? 0).toFixed(2)} · Selling ₹
-                                  {Number(sub.meta?.price ?? 0).toFixed(2)}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">
-                              Total Qty: {sub.totalQty}
-                            </div>
-                          </div>
-                          <div className="divide-y">
-                            {sub.items.map((item) => (
-                              <div
-                                key={item.id}
-                                className="grid grid-cols-[auto,auto,auto,auto,auto] gap-3 px-3 py-2 items-center"
-                              >
-                                <div className="text-xs text-muted-foreground">SKU #{item.id}</div>
-                                <div className="text-right text-xs space-y-1">
-                                  <div>Selling</div>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    className="h-7 w-20 text-right text-xs"
-                                    defaultValue={item.price}
-                                    onBlur={(e) =>
-                                      handleUpdateProduct(item, {
-                                        price: Number(e.target.value || 0),
-                                      })
-                                    }
-                                  />
-                                </div>
-                                <div className="text-right text-xs space-y-1">
-                                  <div>Qty</div>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    className="h-7 w-20 text-right text-xs"
-                                    defaultValue={item.quantity}
-                                    onBlur={(e) =>
-                                      handleUpdateProduct(item, {
-                                        quantity: Number(e.target.value || 0),
-                                      })
-                                    }
-                                  />
-                                </div>
-                                <div className="text-right space-x-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 px-2 text-[11px]"
-                                    onClick={() => startEdit(item)}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 px-2 text-[11px] text-destructive"
-                                    onClick={() => handleDeleteProduct(item)}
-                                  >
-                                    Delete
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                  <div className="space-y-6">
+                    {categorizedStock.map((category) => (
+                      <div key={category.category} className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-semibold">{category.category}</h3>
+                          <Badge variant="outline">
+                            {category.subcategories.reduce((sum, sub) => sum + sub.items.length, 0)} items
+                          </Badge>
                         </div>
-                      ))}
-                    </div>
-                  ))
+                        
+                        {category.subcategories.map((sub) => (
+                          <Card key={sub.subcategory} className="border-l-4 border-l-primary/20">
+                            <CardHeader className="pb-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <h4 className="font-medium">{sub.subcategory}</h4>
+                                  <p className="text-sm text-muted-foreground">
+                                    {sub.items.length} items • Total Qty: {sub.totalQty} • Value: ₹{sub.totalValue.toFixed(0)}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardHeader>
+                            <CardContent className="pt-0">
+                              <div className="grid gap-3">
+                                {sub.items.map((item) => {
+                                  const stockInfo = getStockStatus(item.quantity);
+                                  const StockIcon = stockInfo.icon;
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                                    >
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <h5 className="font-medium">{item.name}</h5>
+                                          <Badge variant={stockInfo.color as any}>
+                                            <StockIcon className="h-3 w-3 mr-1" />
+                                            {item.quantity} stock
+                                          </Badge>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground">
+                                          {[item.size, item.color].filter(Boolean).join(" • ")} • 
+                                          Selling: ₹{item.price} • 
+                                          {item.product_type === "ready-made" && `Cost: ₹${item.purchase_price}`}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => startEdit(item)}
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleDeleteProduct(item)}
+                                          className="text-destructive hover:text-destructive"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -552,59 +641,62 @@ const Inventory = () => {
         {editingProduct && (
           <Card>
             <CardHeader>
-              <CardTitle>Edit {editingProduct.name}</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Edit className="h-5 w-5" />
+                Edit {editingProduct.name}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm">
+            <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label>Name</Label>
                   <Input
                     value={editValues.name}
                     onChange={(e) => handleEditChange("name", e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label>Product Type</Label>
                   <select
                     value={editValues.productType}
                     onChange={(e) =>
                       handleEditChange("productType", e.target.value as "ready-made" | "manufactured")
                     }
-                    className="border rounded-md h-9 px-3 bg-background"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     <option value="ready-made">Ready-made</option>
                     <option value="manufactured">Manufactured</option>
                   </select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Size</Label>
-                  <Input
-                    value={editValues.size}
-                    onChange={(e) => handleEditChange("size", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Color</Label>
-                  <Input
-                    value={editValues.color}
-                    onChange={(e) => handleEditChange("color", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label>Category</Label>
                   <Input
                     value={editValues.category}
                     onChange={(e) => handleEditChange("category", e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label>Subcategory</Label>
                   <Input
                     value={editValues.subcategory}
                     onChange={(e) => handleEditChange("subcategory", e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
+                  <Label>Size</Label>
+                  <Input
+                    value={editValues.size}
+                    onChange={(e) => handleEditChange("size", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Color</Label>
+                  <Input
+                    value={editValues.color}
+                    onChange={(e) => handleEditChange("color", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label>Selling Price (₹)</Label>
                   <Input
                     type="number"
@@ -614,7 +706,7 @@ const Inventory = () => {
                     onChange={(e) => handleEditChange("price", e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label>Buying Price (₹)</Label>
                   <Input
                     type="number"
@@ -625,7 +717,7 @@ const Inventory = () => {
                     disabled={editValues.productType === "manufactured"}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label>Quantity</Label>
                   <Input
                     type="number"
@@ -635,9 +727,11 @@ const Inventory = () => {
                   />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={handleEditSave}>Save Changes</Button>
-                <Button variant="ghost" onClick={() => setEditingProduct(null)}>
+              <div className="flex gap-2">
+                <Button onClick={handleEditSave}>
+                  Save Changes
+                </Button>
+                <Button variant="outline" onClick={() => setEditingProduct(null)}>
                   Cancel
                 </Button>
               </div>
